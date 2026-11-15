@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Egg</title>
 <!--
-  Egg app v0.3 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach. Stephan's library. Static page on GitHub Pages.
+  Egg app v0.4 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach; v0.4 Talk to Jarvis. Stephan's library. Static page on GitHub Pages.
   Private key comes in the link (?k=...) and is kept in localStorage. Nothing personal lives in this file:
   data/*.bin are AES-256-GCM encrypted (12-byte nonce + ciphertext of gzip JSON), built by scripts/build_app.py.
 -->
@@ -280,15 +280,16 @@ async function loadGoals(after) {
 }
 function staleLine() { return GOALS.stale ? '<p class="note" style="color:var(--acc)">⚠️ Goals may be stale (' + esc(GOALS.stale_because) + ') — tell Jarvis: update</p>' : ''; }
 var BIZ = store('eggBiz') || 'all';
+var JARVIS_URL = 'https://claude.ai/artifact/2yphwXsaEwdogiPuJYFym2';
 function bizName(id) { var b = (GOALS.businesses || []).find(function (x) { return x.id === id; }); return b ? b.name : id; }
 function coachCard() {
   var c = GOALS.coach || {}, sec = (c.sections || {})[BIZ === 'all' ? 'overall' : BIZ];
   if (!sec) return '';
   return '<details class="res" open style="border-color:var(--acc2)"><summary>🧭 Coach — ' + esc(BIZ === 'all' ? 'which business, and this week' : bizName(BIZ)) + '</summary><div class="md">' + md(sec) + '</div>' +
     '<p class="src">' + esc(c.written || '') + '</p>' +
-    '<textarea id="askq" placeholder="Ask the coach (goes to Jarvis): e.g. “Should I pitch a shop before van 67 sells?”"></textarea>' +
-    '<div style="margin-top:6px"><button class="btn p" id="askbtn">Copy question for Jarvis</button></div>' +
-    '<p class="note">The coach is rewritten on every Egg sync from your goals, workshops and books — it isn’t a live chat. For back-and-forth, paste your question into Jarvis.</p></details>';
+    '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><a class="btn p" href="' + JARVIS_URL + '" target="_blank" rel="noopener">🎙 Talk to Jarvis</a><button class="btn" id="askshow">Copy a question instead</button></div>' +
+    '<div id="askwrap" hidden><textarea id="askq" placeholder="Your question for the Jarvis project"></textarea><div style="margin-top:6px"><button class="btn" id="askbtn">Copy question for Jarvis</button></div></div>' +
+    '<p class="note">Talk to Jarvis opens a chat on claude.ai that knows these goals, the coach and your books, by text or voice. The coach card itself is rewritten on every Egg sync.</p></details>';
 }
 function renderGoals() {
   var t = ticks(), bizs = [{ id: 'all', name: 'All' }].concat(GOALS.businesses || []);
@@ -306,6 +307,7 @@ function renderGoals() {
       (g.library.length ? '<span class="chip g">' + g.library.length + ' from library</span>' : '') + (g.biz || []).map(function (b) { return '<span class="chip">' + esc(bizName(b)) + '</span>'; }).join('') + '</div></a>';
   }).join('') + (list.length ? '' : '<div class="empty">No goals for ' + esc(bizName(BIZ)) + ' yet — tell Jarvis.</div>') + '<p class="note">From Jarvis Goals.md (' + esc(GOALS.goals_updated || GOALS.goals_mtime) + '). Rebuilt on every Egg sync/update — not live.</p>';
   document.querySelectorAll('#bizseg button').forEach(function (b) { b.onclick = function () { BIZ = b.dataset.b; store('eggBiz', BIZ); renderGoals(); }; });
+  var as = $('#askshow'); if (as) as.onclick = function () { $('#askwrap').hidden = false; as.hidden = true; $('#askq').focus(); };
   var ab = $('#askbtn');
   if (ab) ab.onclick = function () {
     var q = $('#askq').value.trim(); if (!q) return;
