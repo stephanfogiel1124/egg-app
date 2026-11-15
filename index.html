@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Egg</title>
 <!--
-  Egg app v0.4 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach; v0.4 Talk to Jarvis; v0.5 floating Jarvis button on every screen. Stephan's library. Static page on GitHub Pages.
+  Egg app v0.4 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach; v0.4 Talk to Jarvis; v0.5 floating Jarvis button on every screen; v0.6 button opens Egg on claude.ai. Stephan's library. Static page on GitHub Pages.
   Private key comes in the link (?k=...) and is kept in localStorage. Nothing personal lives in this file:
   data/*.bin are AES-256-GCM encrypted (12-byte nonce + ciphertext of gzip JSON), built by scripts/build_app.py.
 -->
@@ -102,7 +102,7 @@ var CK; // CryptoKey
 var DB = { items: [], built: '' };
 var S = { sort: store('eggSort') || 'title', group: store('eggGroup') || 'cat', q: '' };
 var CACHE = 'egg-data-v1';
-var JARVIS_URL = 'https://claude.ai/artifact/2yphwXsaEwdogiPuJYFym2';
+var JARVIS_URL = 'https://claude.ai/artifact/AZQfuuSiPC3wwPPPwoenzz'; // Egg on claude.ai, Jarvis docked
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
