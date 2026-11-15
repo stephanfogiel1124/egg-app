@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Egg</title>
 <!--
-  Egg app v0.4 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach; v0.4 Talk to Jarvis. Stephan's library. Static page on GitHub Pages.
+  Egg app v0.4 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach; v0.4 Talk to Jarvis; v0.5 floating Jarvis button on every screen. Stephan's library. Static page on GitHub Pages.
   Private key comes in the link (?k=...) and is kept in localStorage. Nothing personal lives in this file:
   data/*.bin are AES-256-GCM encrypted (12-byte nonce + ciphertext of gzip JSON), built by scripts/build_app.py.
 -->
@@ -67,6 +67,9 @@ summary{font-weight:600}
 .res .links{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .src{font-size:12px;color:var(--sub);margin:4px 0}
 .note{font-size:13px;color:var(--sub);margin:8px 0}
+.jv-fab{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom));z-index:7;display:flex;align-items:center;gap:6px;height:48px;padding:0 16px 0 12px;border-radius:999px;background:var(--acc);color:#fff;font-weight:600;font-size:15px;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.28)}
+.jv-fab b{font-size:20px;line-height:1}
+main{padding-bottom:72px}
 textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
 </style>
 </head>
@@ -81,6 +84,7 @@ textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:12px
   </div>
 </header>
 <main id="main"><div class="empty">Opening…</div></main>
+<a class="jv-fab" id="jvfab" href="#" target="_blank" rel="noopener" title="Talk to Jarvis about what's on screen"><b>🎙</b><span id="jvlbl">Jarvis</span></a>
 <nav id="nav">
   <a href="#/" data-t="books" class="on"><b>📚</b>Books</a>
   <a href="#/find" data-t="find"><b>🔎</b>Find Books</a>
@@ -98,6 +102,7 @@ var CK; // CryptoKey
 var DB = { items: [], built: '' };
 var S = { sort: store('eggSort') || 'title', group: store('eggGroup') || 'cat', q: '' };
 var CACHE = 'egg-data-v1';
+var JARVIS_URL = 'https://claude.ai/artifact/2yphwXsaEwdogiPuJYFym2';
 
 function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -280,7 +285,7 @@ async function loadGoals(after) {
 }
 function staleLine() { return GOALS.stale ? '<p class="note" style="color:var(--acc)">⚠️ Goals may be stale (' + esc(GOALS.stale_because) + ') — tell Jarvis: update</p>' : ''; }
 var BIZ = store('eggBiz') || 'all';
-var JARVIS_URL = 'https://claude.ai/artifact/2yphwXsaEwdogiPuJYFym2';
+
 function bizName(id) { var b = (GOALS.businesses || []).find(function (x) { return x.id === id; }); return b ? b.name : id; }
 function coachCard() {
   var c = GOALS.coach || {}, sec = (c.sections || {})[BIZ === 'all' ? 'overall' : BIZ];
@@ -354,7 +359,14 @@ function renderGoal(id) {
 }
 
 // ---------- routing ----------
+function jarvisFab(h) {
+  // plain #name is the only hash claude.ai passes to the page: #G6 or #EGG-0014
+  var m = h.match(/^#\/goals\/(G\d+)/) || h.match(/^#\/b\/(EGG-\d{4})/);
+  $('#jvfab').href = JARVIS_URL + (m ? '#' + m[1] : '');
+  $('#jvlbl').textContent = m ? 'Ask Jarvis about ' + (m[1].indexOf('EGG') === 0 ? 'this book' : m[1]) : 'Jarvis';
+}
 function route() {
+  jarvisFab(location.hash || '#/');
   var h = location.hash || '#/', tab = h.indexOf('#/find') === 0 ? 'find' : h.indexOf('#/make') === 0 ? 'make' : h.indexOf('#/media') === 0 ? 'media' : h.indexOf('#/goals') === 0 ? 'goals' : 'books';
   document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.t === tab); });
   var m = h.match(/^#\/b\/(EGG-\d{4})(\/poe)?/);
