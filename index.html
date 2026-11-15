@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Egg</title>
 <!--
-  Egg app v0.1 (2026-11-14). Stephan's library. Static page on GitHub Pages.
+  Egg app v0.2 (2026-11-14) — v0.2 adds the Goals tab. Stephan's library. Static page on GitHub Pages.
   Private key comes in the link (?k=...) and is kept in localStorage. Nothing personal lives in this file:
   data/*.bin are AES-256-GCM encrypted (12-byte nonce + ciphertext of gzip JSON), built by scripts/build_app.py.
 -->
@@ -47,7 +47,7 @@ main{padding:8px 16px}
 .chip.g{color:var(--acc2)}.chip.b{color:var(--blue)}
 mark{background:rgba(200,135,30,.25);color:inherit;border-radius:2px}
 nav{position:fixed;bottom:0;left:0;right:0;z-index:6;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-nav a{flex:1;text-align:center;padding:8px 2px 6px;font-size:11px;color:var(--sub);text-decoration:none}
+nav a{flex:1;text-align:center;padding:8px 1px 6px;font-size:10.5px;color:var(--sub);text-decoration:none}
 nav a b{display:block;font-size:20px;line-height:1.2}
 nav a.on{color:var(--acc)}
 .item{padding:4px 0 24px}
@@ -84,8 +84,9 @@ textarea{width:100%;min-height:70px;font:inherit;padding:10px;border-radius:12px
 <nav id="nav">
   <a href="#/" data-t="books" class="on"><b>📚</b>Books</a>
   <a href="#/find" data-t="find"><b>🔎</b>Find Books</a>
-  <a href="#/make" data-t="make"><b>✍️</b>Make Your Own</a>
-  <a href="#/media" data-t="media"><b>🎧</b>Videos &amp; Podcasts</a>
+  <a href="#/make" data-t="make"><b>✍️</b>Make</a>
+  <a href="#/media" data-t="media"><b>🎧</b>Videos</a>
+  <a href="#/goals" data-t="goals"><b>🎯</b>Goals</a>
 </nav>
 <script>
 "use strict";
@@ -260,13 +261,83 @@ function renderMedia() {
   $('#lkadd').onclick = function () { var t = $('#lk').value.trim(); if (!t) return; var url = (t.match(/https?:\/\/\S+/) || [''])[0]; var w = wanted(); w.push({ title: t.replace(url, '').trim() || url, author: '', src: 'Link', url: url, at: new Date().toISOString() }); store('eggWanted', JSON.stringify(w)); $('#lk').value = ''; location.hash = '#/find'; };
 }
 
+// ---------- Goals (from Jarvis Goals.md + workshop handoffs + library; built by build_goals.py) ----------
+var GOALS = null;
+function ticks() { try { return JSON.parse(store('eggTicks') || '{}'); } catch (e) { return {}; } }
+function stepKey(g, s) { return g.id + '|' + s.text; }
+function isDone(g, s, t) { var k = stepKey(g, s); return k in t ? t[k] : s.done; }
+function dueInfo(g) {
+  if (!g.due) return { txt: g.deadline || '', red: false };
+  var days = Math.round((new Date(g.due + 'T23:59:00') - new Date()) / 864e5);
+  return { txt: (days < 0 ? 'OVERDUE ' + (-days) + 'd' : days === 0 ? 'due today' : 'in ' + days + 'd') + ' · ' + g.deadline, red: days <= 7 };
+}
+async function loadGoals(after) {
+  if (GOALS) return after();
+  try {
+    GOALS = await unseal(await getBin('data/goals.bin', async function (fresh) { GOALS = await unseal(fresh); route(); }));
+  } catch (e) { $('#main').innerHTML = '<div class="empty">Goals not built yet (' + esc(e.message) + ').</div>'; return; }
+  after();
+}
+function staleLine() { return GOALS.stale ? '<p class="note" style="color:var(--acc)">⚠️ Goals may be stale (' + esc(GOALS.stale_because) + ') — tell Jarvis: update</p>' : ''; }
+function renderGoals() {
+  var t = ticks();
+  $('#main').innerHTML = staleLine() + GOALS.goals.map(function (g) {
+    var d = dueInfo(g), n = g.steps.filter(function (s) { return isDone(g, s, t); }).length;
+    var next = (g.steps.find(function (s) { return !isDone(g, s, t); }) || {}).text || 'All steps done ✓';
+    return '<a class="row" href="#/goals/' + g.id + '" style="display:block"><div class="t">' + esc(g.id) + ' · ' + esc(g.name) + '</div>' +
+      (d.txt ? '<div class="a" style="' + (d.red ? 'color:#d23a2a;font-weight:600' : '') + '">' + esc(d.txt) + '</div>' : '') +
+      (g.status ? '<div class="o">' + esc(g.status) + '</div>' : '') +
+      '<div class="o"><b>Next:</b> ' + esc(next) + '</div><div class="chips"><span class="chip">' + n + '/' + g.steps.length + ' steps</span>' +
+      (g.workshop ? g.workshop.split(',').map(function (w) { return '<span class="chip b">' + esc(w.trim()) + '</span>'; }).join('') : '') +
+      (g.library.length ? '<span class="chip g">' + g.library.length + ' from library</span>' : '') + '</div></a>';
+  }).join('') + '<p class="note">From Jarvis Goals.md (' + esc(GOALS.goals_updated || GOALS.goals_mtime) + '). Rebuilt on every Egg sync/update — not live.</p>';
+}
+function renderGoal(id) {
+  var g = GOALS.goals.find(function (x) { return x.id === id; });
+  if (!g) { $('#main').innerHTML = '<div class="empty">No goal ' + esc(id) + '</div>'; return; }
+  var t = ticks(), d = dueInfo(g);
+  var next = (g.steps.find(function (s) { return !isDone(g, s, t); }) || {}).text;
+  var html = '<div class="item"><a class="back" href="#/goals">‹ Goals</a>' + staleLine() +
+    '<div class="t" style="font-size:20px">' + esc(g.name) + '</div>' +
+    (d.txt ? '<div class="a" style="' + (d.red ? 'color:#d23a2a;font-weight:600' : '') + '">' + esc(d.txt) + '</div>' : '') +
+    (g.why ? '<p class="o" style="-webkit-line-clamp:unset">' + esc(g.why) + '</p>' : '') +
+    '<div class="res" style="border-color:var(--acc)"><div class="grp" style="margin:0 0 4px">Do this next</div><div class="t">' + esc(next || 'All steps done ✓') + '</div></div>' +
+    '<div class="grp">Steps</div>' + g.steps.map(function (s, i) {
+      var on = isDone(g, s, t), local = stepKey(g, s) in t;
+      return '<label class="res" style="display:flex;gap:10px;align-items:flex-start"><input type="checkbox" data-i="' + i + '"' + (on ? ' checked' : '') + ' style="width:20px;height:20px;margin-top:2px;flex:none"><span style="' + (on ? 'text-decoration:line-through;color:var(--sub)' : '') + '">' + esc(s.text) + (local ? ' <span class="chip">phone</span>' : '') + '</span></label>';
+    }).join('') +
+    '<button class="btn" id="copyt">Copy ticks for Jarvis</button><p class="note">Ticks here stay on this phone until Jarvis gets them — paste into Jarvis.</p>';
+  g.latest.forEach(function (h) {
+    html += '<div class="grp">Latest from ' + esc(h.workshop) + '</div><div class="res">' + h.lines.map(function (l) { return '<div class="o" style="-webkit-line-clamp:unset;margin:4px 0">' + esc(l) + '</div>'; }).join('') + '<div class="src">' + esc(h.file) + ' · ' + esc(h.updated || h.mtime) + '</div></div>';
+  });
+  html += '<div class="grp">From your library</div>' + (g.library.length ? g.library.map(function (p) {
+    return '<a class="res" href="#/b/' + p.id + '" style="display:block;text-decoration:none;color:inherit"><div class="src">' + esc(p.id) + ' · ' + esc(p.title) + '</div><div>' + esc(p.text) + '</div>' + (p.label ? '<div class="src"><em>' + esc(p.label) + '</em></div>' : '') + '</a>';
+  }).join('') : '<p class="note">Nothing in the library fits this goal yet.</p>') + '</div>';
+  $('#main').innerHTML = html;
+  window.scrollTo(0, 0);
+  document.querySelectorAll('[data-i]').forEach(function (cb) {
+    cb.onchange = function () {
+      var s = g.steps[+cb.dataset.i], k = stepKey(g, s), t = ticks();
+      if (cb.checked === s.done) delete t[k]; else t[k] = cb.checked;
+      store('eggTicks', JSON.stringify(t)); renderGoal(id);
+    };
+  });
+  $('#copyt').onclick = function () {
+    var t = ticks(), out = [];
+    GOALS.goals.forEach(function (gg) { gg.steps.forEach(function (s) { var k = stepKey(gg, s); if (k in t) out.push('- ' + gg.id + ': ' + (t[k] ? '[x] ' : '[ ] (un-ticked) ') + s.text); }); });
+    var txt = out.length ? 'Jarvis — goal ticks from the Egg app (' + new Date().toLocaleString() + '):\n' + out.join('\n') : 'Jarvis — no new goal ticks from the Egg app.';
+    navigator.clipboard.writeText(txt).then(function () { $('#copyt').textContent = 'Copied ✓ (' + out.length + ')'; });
+  };
+}
+
 // ---------- routing ----------
 function route() {
-  var h = location.hash || '#/', tab = h.indexOf('#/find') === 0 ? 'find' : h.indexOf('#/make') === 0 ? 'make' : h.indexOf('#/media') === 0 ? 'media' : 'books';
+  var h = location.hash || '#/', tab = h.indexOf('#/find') === 0 ? 'find' : h.indexOf('#/make') === 0 ? 'make' : h.indexOf('#/media') === 0 ? 'media' : h.indexOf('#/goals') === 0 ? 'goals' : 'books';
   document.querySelectorAll('nav a').forEach(function (a) { a.classList.toggle('on', a.dataset.t === tab); });
   var m = h.match(/^#\/b\/(EGG-\d{4})(\/poe)?/);
   $('#ctl').style.display = (tab === 'books' && !m) ? '' : 'none';
-  $('#q').style.display = m || tab === 'make' || tab === 'media' ? 'none' : '';
+  $('#q').style.display = m || tab === 'make' || tab === 'media' || tab === 'goals' ? 'none' : '';
+  if (tab === 'goals' && !m) { var gm = h.match(/^#\/goals\/(G\d+)/); return loadGoals(function () { gm ? renderGoal(gm[1]) : renderGoals(); }); }
   $('#q').placeholder = tab === 'find' ? 'Find any book in free sources…' : 'Search title, author, principle…';
   if (m) return renderItem(m[1], !!m[2]);
   if (tab === 'find') { var qq = decodeURIComponent((h.split('?q=')[1] || '')); if (qq) { S.q = qq; $('#q').value = qq; } return renderFind(S.q); }
@@ -299,7 +370,12 @@ async function boot() {
   } catch (e) {
     $('#main').innerHTML = '<div class="empty">Couldn’t open Egg: ' + esc(e.message) + '<br>Wrong or old link? Ask Egg on the Mac for the current one.</div>';
   }
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator) {
+    var hadSW = !!navigator.serviceWorker.controller;
+    // a new app version took over (sw.js changed): reload once so the new page shows right away
+    navigator.serviceWorker.addEventListener('controllerchange', function () { if (hadSW && !window._eggReloaded) { window._eggReloaded = true; location.reload(); } });
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
 }
 boot();
 </script>
