@@ -1,7 +1,7 @@
-// Egg service worker v0.3 — app shell: serve from cache instantly, refresh in the background.
+// Egg service worker v0.4 — app shell: serve from cache instantly, refresh in the background.
 // Always fetch shell files with cache:'no-cache' so the browser's HTTP cache (GitHub Pages max-age=600) can't hand back
 // an old page. Data files (data/*.bin) are cached by the page itself (Cache API, "egg-data-v1"), not here.
-const SHELL = 'egg-shell-v3';
+const SHELL = 'egg-shell-v4';
 const FILES = ['index.html', 'manifest.json', 'icon.svg', 'icon-180.png'];
 const fresh = f => fetch(new Request(f, { cache: 'no-cache' }));
 self.addEventListener('install', e => {

@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.json">
 <title>Egg</title>
 <!--
-  Egg app v0.2 (2026-11-14) — v0.2 adds the Goals tab. Stephan's library. Static page on GitHub Pages.
+  Egg app v0.3 (2026-11-15) — v0.2 Goals tab; v0.3 business picker + Coach. Stephan's library. Static page on GitHub Pages.
   Private key comes in the link (?k=...) and is kept in localStorage. Nothing personal lives in this file:
   data/*.bin are AES-256-GCM encrypted (12-byte nonce + ciphertext of gzip JSON), built by scripts/build_app.py.
 -->
@@ -132,7 +132,7 @@ function same(a, b) { if (a.byteLength !== b.byteLength) return false; var x = n
 // ---------- markdown (headings, lists, bold, italics, links, [[Egg links]]) ----------
 function inline(s) {
   s = esc(s);
-  s = s.replace(/\[\[(EGG-\d{4})([^\]]*)\]\]/g, function (m, id, rest) { return '<a href="#/b/' + id + (/POE 2021 notes/.test(rest) ? '/poe' : '') + '">' + id + rest + '</a>'; });
+  s = s.replace(/\[\[(EGG-\d{4})([^\]]*)\]\]/g, function (m, id, rest) { var it = DB.items.find(function (x) { return x.id === id; }); return '<a href="#/b/' + id + (/POE 2021 notes/.test(rest) ? '/poe' : '') + '">' + (rest ? id + rest : (it ? it.title.split(/[:;]/)[0] : id)) + '</a>'; });
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[\s(])_(.+?)_(?=[\s).,;:]|$)/g, '$1<em>$2</em>');
   s = s.replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   return s;
@@ -279,9 +279,23 @@ async function loadGoals(after) {
   after();
 }
 function staleLine() { return GOALS.stale ? '<p class="note" style="color:var(--acc)">⚠️ Goals may be stale (' + esc(GOALS.stale_because) + ') — tell Jarvis: update</p>' : ''; }
+var BIZ = store('eggBiz') || 'all';
+function bizName(id) { var b = (GOALS.businesses || []).find(function (x) { return x.id === id; }); return b ? b.name : id; }
+function coachCard() {
+  var c = GOALS.coach || {}, sec = (c.sections || {})[BIZ === 'all' ? 'overall' : BIZ];
+  if (!sec) return '';
+  return '<details class="res" open style="border-color:var(--acc2)"><summary>🧭 Coach — ' + esc(BIZ === 'all' ? 'which business, and this week' : bizName(BIZ)) + '</summary><div class="md">' + md(sec) + '</div>' +
+    '<p class="src">' + esc(c.written || '') + '</p>' +
+    '<textarea id="askq" placeholder="Ask the coach (goes to Jarvis): e.g. “Should I pitch a shop before van 67 sells?”"></textarea>' +
+    '<div style="margin-top:6px"><button class="btn p" id="askbtn">Copy question for Jarvis</button></div>' +
+    '<p class="note">The coach is rewritten on every Egg sync from your goals, workshops and books — it isn’t a live chat. For back-and-forth, paste your question into Jarvis.</p></details>';
+}
 function renderGoals() {
-  var t = ticks();
-  $('#main').innerHTML = staleLine() + GOALS.goals.map(function (g) {
+  var t = ticks(), bizs = [{ id: 'all', name: 'All' }].concat(GOALS.businesses || []);
+  var cur = (GOALS.businesses || []).find(function (b) { return b.id === BIZ; });
+  var list = GOALS.goals.filter(function (g) { return BIZ === 'all' || (g.biz || []).indexOf(BIZ) >= 0; });
+  $('#main').innerHTML = staleLine() + '<div class="seg" id="bizseg" style="overflow-x:auto;margin:4px 0 6px">' + bizs.map(function (b) { return '<button data-b="' + b.id + '"' + (b.id === BIZ ? ' class="on"' : '') + '>' + esc(b.name) + '</button>'; }).join('') + '</div>' +
+    (cur ? '<p class="note" style="margin-top:0">' + esc(cur.what) + '</p>' : '') + coachCard() + list.map(function (g) {
     var d = dueInfo(g), n = g.steps.filter(function (s) { return isDone(g, s, t); }).length;
     var next = (g.steps.find(function (s) { return !isDone(g, s, t); }) || {}).text || 'All steps done ✓';
     return '<a class="row" href="#/goals/' + g.id + '" style="display:block"><div class="t">' + esc(g.id) + ' · ' + esc(g.name) + '</div>' +
@@ -289,8 +303,15 @@ function renderGoals() {
       (g.status ? '<div class="o">' + esc(g.status) + '</div>' : '') +
       '<div class="o"><b>Next:</b> ' + esc(next) + '</div><div class="chips"><span class="chip">' + n + '/' + g.steps.length + ' steps</span>' +
       (g.workshop ? g.workshop.split(',').map(function (w) { return '<span class="chip b">' + esc(w.trim()) + '</span>'; }).join('') : '') +
-      (g.library.length ? '<span class="chip g">' + g.library.length + ' from library</span>' : '') + '</div></a>';
-  }).join('') + '<p class="note">From Jarvis Goals.md (' + esc(GOALS.goals_updated || GOALS.goals_mtime) + '). Rebuilt on every Egg sync/update — not live.</p>';
+      (g.library.length ? '<span class="chip g">' + g.library.length + ' from library</span>' : '') + (g.biz || []).map(function (b) { return '<span class="chip">' + esc(bizName(b)) + '</span>'; }).join('') + '</div></a>';
+  }).join('') + (list.length ? '' : '<div class="empty">No goals for ' + esc(bizName(BIZ)) + ' yet — tell Jarvis.</div>') + '<p class="note">From Jarvis Goals.md (' + esc(GOALS.goals_updated || GOALS.goals_mtime) + '). Rebuilt on every Egg sync/update — not live.</p>';
+  document.querySelectorAll('#bizseg button').forEach(function (b) { b.onclick = function () { BIZ = b.dataset.b; store('eggBiz', BIZ); renderGoals(); }; });
+  var ab = $('#askbtn');
+  if (ab) ab.onclick = function () {
+    var q = $('#askq').value.trim(); if (!q) return;
+    var ctx = list.map(function (g) { var nx = (g.steps.find(function (s) { return !isDone(g, s, ticks()); }) || {}).text || 'all done'; return '- ' + g.id + ' ' + g.name + ' — next: ' + nx; }).join('\n');
+    navigator.clipboard.writeText('Coach question from the Egg app (' + (BIZ === 'all' ? 'all businesses' : bizName(BIZ)) + '):\n' + q + '\n\nMy goals here right now:\n' + ctx + '\n\nAnswer using my Egg library (Egg Index.md) and the Egg Coach notes.').then(function () { ab.textContent = 'Copied ✓ — paste into Jarvis'; });
+  };
 }
 function renderGoal(id) {
   var g = GOALS.goals.find(function (x) { return x.id === id; });
